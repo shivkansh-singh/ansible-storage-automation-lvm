@@ -1,0 +1,41 @@
+---
+- name: Ensure Apache storage configurtion 
+  hosts: serverb 
+  vars_files: 
+    - storage_vars.yml
+  tasks:
+    - name: correct partitions exist on /dev/sdb
+      community.general.parted:
+        device: /dev/sdb
+        state: present
+        number: "{{ item.number }}"
+        part_end: "{{ item.end }}"
+      loop: "{{ partitions }}"
+
+    - name: Ensure volume group exist
+      community.general.lvg:
+        vg: "{{ item.name }}"
+        pvs: "{{ item.devices }}"
+      loop: "{{ volume_groups }}"
+      
+    - name: Create each logical volume (lV) if needed
+      community.general.lvol:
+        vg: "{{ item.vgroup }}"
+        lv: "{{ item.name }}"
+        size: "{{ item.size }}"
+      loop: "{{ logical_vol }}"
+
+    - name: Ensure XFS filesystem exists on each lv
+      community.general.filesystem:
+        dev: "/dev/{{ item.vgroup }}/{{ item.name }}"
+        fstype: xfs
+      loop: "{{ logical_vol }}"
+
+    - name: Each logical vol is mounted
+      ansible.posix.mount:
+        path: "{{ item.mount_path }}"
+        src: "/dev/{{ item.vgroup }}/{{ item.name }}"
+        fstype: xfs
+        opts: noatime
+        state: mounted
+      loop: "{{ logical_vol }}"
